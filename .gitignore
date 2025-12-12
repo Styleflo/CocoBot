@@ -1,3 +1,6 @@
 /Images
+/Images_resized
+/Images_aug
 
 .idea
+.DS_Store
