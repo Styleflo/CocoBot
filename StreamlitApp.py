@@ -1,11 +1,7 @@
-from warnings import catch_warnings
-
 import streamlit as st
 import numpy as np
 from PIL import Image
 import pandas as pd
-from networkx.algorithms.components import articulation_points
-from pyarrow.dataset import parquet_dataset
 from sentence_transformers import SentenceTransformer
 from scipy.spatial.distance import cosine
 import ast
@@ -13,7 +9,6 @@ import requests
 from io import BytesIO
 from tensorflow import keras
 from keras.applications import ResNet50
-from tensorflow.python.debug.lib.debug_events_reader import Execution
 
 # Chargement des données
 articles = pd.read_csv("data_emb.csv")
