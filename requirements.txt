@@ -6,3 +6,4 @@ sentence-transformers
 scipy
 requests
 tensorflow
+tf-keras
