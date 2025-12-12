@@ -13,11 +13,18 @@ from keras.applications import ResNet50
 # Chargement des données
 articles = pd.read_csv("data_emb.csv")
 articles_images = pd.read_parquet("resnet50_image_embeddings.parquet")
+articles_combined = articles.copy()
 embedding_cols = [f"resnet50_{i}" for i in range(0, 2048)]  # ou df.columns spécifiques
 articles_images['embeddings_images'] = articles_images[embedding_cols].apply(lambda row: row.tolist(), axis=1)
 
 # Convertir les embeddings de str -> np.array
 articles['embeddings'] = articles['embeddings'].apply(lambda x: np.array(ast.literal_eval(x)))
+
+E_text = np.vstack(articles['embeddings'].to_numpy())
+E_img  = np.vstack(articles_images['embeddings_images'].to_numpy())
+
+articles_combined["embeddings"] = list(np.hstack([E_text, E_img]))   
+ 
 
 # Charger le modèle une seule fois (important pour Streamlit)
 @st.cache_resource
@@ -33,6 +40,30 @@ def load_cnn_model():
 @st.cache_resource
 def load_text_model():
     return SentenceTransformer("all-MiniLM-L6-v2")
+
+# Fonction de similarité
+def compute_similarity_images(query_emb, df, top_k=10, combined=False):
+    query_emb = np.array(query_emb).flatten()
+    df = df.copy()
+
+    # Calcul de la similarité
+    df['similarity'] = df['embeddings_images'].apply(lambda emb: 1 - cosine(query_emb, np.array(emb).flatten()))
+
+    # Trier par similarité décroissante
+    df_sorted = df.sort_values("similarity", ascending=False)
+
+    # Garder seulement le premier article unique par product_code
+    df_unique = df_sorted.drop_duplicates(subset='product_code', keep='first')
+
+    if combined:
+        return df_unique
+    
+    # Sélectionner les top_k
+    df_topk = df_unique.head(top_k)
+
+    sims = df_topk['similarity'].values
+    order = df_topk.index.tolist()
+    return sims, order
 
 # Fonction de similarité
 def compute_similarity(query_emb, df, top_k=10):
@@ -59,18 +90,14 @@ def compute_similarity(query_emb, df, top_k=10):
 def encode_image(image: Image.Image):
     try:
         model = load_cnn_model()
-        st.write("Modèle chargé")
 
         img = image.convert("RGB").resize((256, 256))
         img_array = np.array(img) / 255.0
-        st.write("Image convertie en array")
 
         img_array = np.expand_dims(img_array, axis=0)
-        st.write("Batch ajouté")
 
-        st.write("Predict")
         embeddings = model.predict(img_array)
-        st.write("fin predict")
+        
         return embeddings.flatten()
 
     except Exception as e:
@@ -119,7 +146,7 @@ if option == "Recherche par image":
         st.image(img, caption="Image fournie", width=300)
 
         query_emb = encode_image(img)
-        sims, order = compute_similarity(query_emb, articles_images)
+        sims, order = compute_similarity_images(query_emb, articles_images)
 
         st.subheader("🔝 Top 10 articles visuellement similaires")
         for idx in order[:10]:
@@ -174,9 +201,9 @@ elif option == "Recherche combinée":
 
         emb_img = encode_image(img)
         emb_txt = encode_text(query_text)
-        query_emb = 0.5 * np.array(emb_img) + 0.5 * np.array(emb_txt)
+        query_emb = np.hstack([emb_txt, emb_img])
 
-        sims, order = compute_similarity(query_emb, articles)
+        sims, order = compute_similarity(query_emb, articles_combined)
 
         st.subheader("Top 10 articles combinés")
         for idx in order[:50]:
