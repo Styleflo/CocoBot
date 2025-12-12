@@ -1,17 +1,43 @@
+from warnings import catch_warnings
+
 import streamlit as st
 import numpy as np
 from PIL import Image
 import pandas as pd
+from networkx.algorithms.components import articulation_points
+from pyarrow.dataset import parquet_dataset
 from sentence_transformers import SentenceTransformer
 from scipy.spatial.distance import cosine
 import ast
 import requests
 from io import BytesIO
+from tensorflow import keras
+from keras.applications import ResNet50
+from tensorflow.python.debug.lib.debug_events_reader import Execution
 
 # Chargement des données
 articles = pd.read_csv("data_emb.csv")
+articles_images = pd.read_parquet("resnet50_image_embeddings.parquet")
+embedding_cols = [f"resnet50_{i}" for i in range(0, 2048)]  # ou df.columns spécifiques
+articles_images['embeddings_images'] = articles_images[embedding_cols].apply(lambda row: row.tolist(), axis=1)
+
 # Convertir les embeddings de str -> np.array
 articles['embeddings'] = articles['embeddings'].apply(lambda x: np.array(ast.literal_eval(x)))
+
+# Charger le modèle une seule fois (important pour Streamlit)
+@st.cache_resource
+def load_cnn_model():
+    resnet_model = ResNet50(
+        include_top=False,
+        weights="imagenet",
+        pooling="avg"
+    )
+    resnet_model.trainable = False  # on ne fine-tune pas, juste extraction de features
+    return resnet_model
+
+@st.cache_resource
+def load_text_model():
+    return SentenceTransformer("all-MiniLM-L6-v2")
 
 # Fonction de similarité
 def compute_similarity(query_emb, df, top_k=10):
@@ -36,13 +62,29 @@ def compute_similarity(query_emb, df, top_k=10):
 
 
 def encode_image(image: Image.Image):
-    return np.random.rand(512)
+    try:
+        model = load_cnn_model()
+        st.write("Modèle chargé")
+
+        img = image.convert("RGB").resize((256, 256))
+        img_array = np.array(img) / 255.0
+        st.write("Image convertie en array")
+
+        img_array = np.expand_dims(img_array, axis=0)
+        st.write("Batch ajouté")
+
+        st.write("Predict")
+        embeddings = model.predict(img_array)
+        st.write("fin predict")
+        return embeddings.flatten()
+
+    except Exception as e:
+        print(e)
 
 def encode_text(text: str):
-    model = SentenceTransformer("all-MiniLM-L6-v2")
+    model = load_text_model()
     embeddings = model.encode(text, show_progress_bar=True)
     return embeddings
-
 
 # Fonction utilitaire pour charger image depuis URL
 def load_image_from_url(url):
@@ -82,7 +124,7 @@ if option == "Recherche par image":
         st.image(img, caption="Image fournie", width=300)
 
         query_emb = encode_image(img)
-        sims, order = compute_similarity(query_emb, articles)
+        sims, order = compute_similarity(query_emb, articles_images)
 
         st.subheader("🔝 Top 10 articles visuellement similaires")
         for idx in order[:10]:
@@ -93,7 +135,7 @@ if option == "Recherche par image":
                 if img_row:
                     st.image(img_row, width=100)
             with col2:
-                st.write(f"**{row['title']}**")
+                st.write(f"**{row['title_translated']}**")
                 st.write(f"*Code du produit : {row['product_code']}*")
                 st.write(f"Catégorie: {row['category1_code']} / {row['category2_code']}")
                 st.write(f"Prix : {row['price']} €")
@@ -118,7 +160,7 @@ elif option == "Recherche par texte":
                 if img_row:
                     st.image(img_row, width=100)
             with col2:
-                st.write(f"**{row['title']}**")
+                st.write(f"**{row['title_translated']}**")
                 st.write(f"*Code du produit : {row['product_code']}*")
                 st.write(f"Catégorie: {row['category1_code']} / {row['category2_code']}")
                 st.write(f"Prix : {row['price']} €")
@@ -150,7 +192,7 @@ elif option == "Recherche combinée":
                 if img_row:
                     st.image(img_row, width=100)
             with col2:
-                st.write(f"**{row['title']}**")
+                st.write(f"**{row['title_translated']}**")
                 st.write(f"*Code du produit : {row['product_code']}*")
                 st.write(f"Catégorie: {row['category1_code']} / {row['category2_code']}")
                 st.write(f"Prix : {row['price']} €")
