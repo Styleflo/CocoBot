@@ -1,4 +1,6 @@
-# Projet Final - Apprentissage Automatique pour Données Massives
+# CocoBot
+
+## Projet Final - Apprentissage Automatique pour Données Massives
 
 ### Système de recommandation et de recherche sémantique pour les produits Chanel, utilisant des embeddings de texte et d'image.
 
