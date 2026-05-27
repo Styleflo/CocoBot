@@ -1,4 +1,6 @@
-# Final Project - Machine Learning for Big Data
+# CocoBot
+
+## Final Project - Machine Learning for Big Data
 
 ### Semantic search and recommendation system for Chanel products, leveraging text and image embeddings.
 
